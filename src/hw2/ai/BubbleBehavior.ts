@@ -45,7 +45,7 @@ export default class BubbleBehavior implements AI {
     }
 
     public destroy(): void {
-        
+
     }
 
     public activate(options: Record<string, any>): void {}
@@ -72,7 +72,6 @@ export default class BubbleBehavior implements AI {
             this.owner.position.add(Vec2.UP.scale(this.currentYSpeed * deltaT)).add(Vec2.LEFT.scale(this.currentXSpeed* deltaT));
         }
     }
-    
-}
 
+}
 

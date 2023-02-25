@@ -2,6 +2,7 @@ import Mat4x4 from "../../Wolfie2D/DataTypes/Mat4x4";
 import Vec2 from "../../Wolfie2D/DataTypes/Vec2";
 import Rect from "../../Wolfie2D/Nodes/Graphics/Rect";
 import RectShaderType from "../../Wolfie2D/Rendering/WebGLRendering/ShaderTypes/RectShaderType";
+import Color from "../../Wolfie2D/Utils/Color";
 
 // TODO Find a way to pass the color of the laser to the laser's fragment shader program
 export default class LaserShaderType extends RectShaderType {
@@ -41,6 +42,24 @@ export default class LaserShaderType extends RectShaderType {
 		gl.enableVertexAttribArray(a_Position);
 
 		/* ##### UNIFORMS ##### */
+
+		
+		// Get the location of the u_Colors uniform array
+		const u_Colors = gl.getUniformLocation(program, "u_Colors");
+
+		// Define an array of colors for the gradient
+		const colors = [
+			Color.RED,
+			Color.GREEN,
+			Color.BLUE,
+		];
+
+		// Convert the colors to an array of vec4 values
+		const colorArray = colors.map(color => color.toArray());
+
+		// Pass the array of colors to the shader
+		gl.uniform4fv(u_Colors, colorArray.flat());
+		
 
 		// Get transformation matrix
 		// We have a square for our rendering space, so get the maximum dimension of our quad

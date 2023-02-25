@@ -2,10 +2,12 @@ import AI from "../../Wolfie2D/DataTypes/Interfaces/AI";
 import Vec2 from "../../Wolfie2D/DataTypes/Vec2";
 import GameEvent from "../../Wolfie2D/Events/GameEvent";
 import Receiver from "../../Wolfie2D/Events/Receiver";
+import Game from "../../Wolfie2D/Loop/Game";
 import Graphic from "../../Wolfie2D/Nodes/Graphic";
 import AnimatedSprite from "../../Wolfie2D/Nodes/Sprites/AnimatedSprite";
 import Timer from "../../Wolfie2D/Timing/Timer";
 import { HW2Events } from "../HW2Events";
+import PlayerController from "./PlayerController";
 
 export const MineAnimations = {
     IDLE: "IDLE",
@@ -32,6 +34,7 @@ export default class MineBehavior implements AI {
         this.receiver = new Receiver();
         this.receiver.subscribe(HW2Events.LASER_MINE_COLLISION);
         this.receiver.subscribe(HW2Events.MINE_EXPLODED);
+        this.receiver.subscribe(HW2Events.PLAYER_MINE_COLLISION);
 
         this.activate(options);
     }
@@ -46,7 +49,7 @@ export default class MineBehavior implements AI {
     /**
      * @see {AI.handleEvent}
      */
-    handleEvent(event: GameEvent): void { 
+    handleEvent(event: GameEvent): void {
         switch(event.type) {
             case HW2Events.LASER_MINE_COLLISION: {
                 this.handleLaserMineCollision(event);
@@ -54,6 +57,10 @@ export default class MineBehavior implements AI {
             }
             case HW2Events.MINE_EXPLODED: {
                 this.handleMineExploded(event);
+                break;
+            }
+            case HW2Events.PLAYER_MINE_COLLISION: {
+                this.handleMineHit(event);
                 break;
             }
             default: {
@@ -94,6 +101,13 @@ export default class MineBehavior implements AI {
         if (id === this.owner.id) {
             this.owner.position.copy(Vec2.ZERO);
             this.owner.visible = false;
+        }
+    }
+
+    protected handleMineHit(event: GameEvent): void {
+        let id = event.data.get("id");
+        if (event.data.get("id") === this.owner.id) {
+            this.owner.animation.playIfNotAlready(MineAnimations.EXPLODING, false, HW2Events.MINE_EXPLODED)
         }
     }
 }

@@ -10,6 +10,8 @@ import MathUtils from "../../Wolfie2D/Utils/MathUtils";
 
 import { HW2Events } from "../HW2Events";
 import { HW2Controls } from "../HW2Controls";
+import Hit from "../../Wolfie2D/DataTypes/Physics/Hit";
+import Game from "../../Wolfie2D/Loop/Game";
 
 export const PlayerAnimations = {
     IDLE: "IDLE",
@@ -46,9 +48,14 @@ export default class PlayerController implements AI {
 	private receiver: Receiver;
 	private emitter: Emitter;
 
+	private iframeTimer: Timer;
+	private iframe: boolean;
+
+	private deadTimerStarted: boolean;
+
 	/**
 	 * This method initializes all variables inside of this AI class.
-     * 
+     *
 	 * @param owner The owner of this AI - i.e. the player
 	 * @param options The list of options for ai initialization
 	 */
@@ -59,8 +66,17 @@ export default class PlayerController implements AI {
 		this.emitter = new Emitter();
 
 		this.laserTimer = new Timer(2500, this.handleLaserTimerEnd, false);
-		
+
+		this.iframe = false;
+		this.iframeTimer = new Timer(1000, this.iframeOFF, false);
+		this.deadTimerStarted = false;
+
 		this.receiver.subscribe(HW2Events.SHOOT_LASER);
+
+		this.receiver.subscribe(HW2Events.DROWNING);
+		this.receiver.subscribe(HW2Events.PLAYER_MINE_COLLISION);
+		this.receiver.subscribe(HW2Events.DEAD);
+		this.receiver.subscribe(HW2Events.PLAYER_BUBBLE_COLLISION);
 
 		this.activate(options);
 	}
@@ -90,45 +106,53 @@ export default class PlayerController implements AI {
 		this.owner.animation.play(PlayerAnimations.IDLE);
 	};
 	/**
-	 * Handles updates to the player 
-	 * 
+	 * Handles updates to the player
+	 *
 	 * @remarks
-	 * 
+	 *
 	 * The PlayerController updates the player at every frame (each time the main
-	 * GameLoop iterates). 
-	 * 
-	 * This method should handle all incoming user input events. Things like key-presses, 
+	 * GameLoop iterates).
+	 *
+	 * This method should handle all incoming user input events. Things like key-presses,
 	 * mouse-clicks, mouse-downs etc. In addition, this method should handle all events
 	 * that the PlayerController's receiver is subscribed to.
-	 * 
+	 *
 	 * This method is also responsible for updating the state of the player, and altering
 	 * the rest of the game to changes in the state of the player. If the player's stats
-	 * change, the UI needs to be notified so that it can reflect those changes. If the 
+	 * change, the UI needs to be notified so that it can reflect those changes. If the
 	 * player is dead, the scene needs to be notified so that it can change to GameOver scene.
-	 * 
+	 *
 	 * @param deltaT - the amount of time that has passed since the last update
 	 */
 	public update(deltaT: number): void {
-        // First, handle all events 
+        // First, handle all events
 		while(this.receiver.hasNextEvent()){
 			this.handleEvent(this.receiver.getNextEvent());
 		}
 
+		this.emitter.fireEvent(HW2Events.HEALTH_CHANGE, {currentHP: this.currentHealth, maxHP: this.maxHealth});
+		this.emitter.fireEvent(HW2Events.AIR_CHANGE, {currentAIR: this.currentAir, maxAIR: this.maxAir});
+
         // If the player is out of hp - play the death animation
-		if (this.currentHealth <= this.minHealth) { 
+		if (this.currentHealth <= this.minHealth && !this.deadTimerStarted) { 
             this.emitter.fireEvent(HW2Events.DEAD);
+			this.iframe = true;
+			this.currentSpeed = 0;
+			this.deadTimerStarted = true;
             return;
         }
 
-		// Get the player's input direction 
+		// Get the player's input direction
 		let forwardAxis = (Input.isPressed(HW2Controls.MOVE_UP) ? 1 : 0) + (Input.isPressed(HW2Controls.MOVE_DOWN) ? -1 : 0);
 		let horizontalAxis = (Input.isPressed(HW2Controls.MOVE_LEFT) ? -1 : 0) + (Input.isPressed(HW2Controls.MOVE_RIGHT) ? 1 : 0);
 
 		// Handle trying to shoot a laser from the submarine
-		if (Input.isMouseJustPressed() && this.currentCharge > 0) {
-			this.currentCharge -= 1;
-			this.emitter.fireEvent(HW2Events.SHOOT_LASER, {src: this.owner.position});
-			this.emitter.fireEvent(HW2Events.CHARGE_CHANGE, {curchrg: this.currentCharge, maxchrg: this.maxCharge});
+		if (!this.deadTimerStarted) {
+			if (Input.isMouseJustPressed() && this.currentCharge > 0) {
+				this.currentCharge -= 1;
+				this.emitter.fireEvent(HW2Events.SHOOT_LASER, {src: this.owner.position});
+				this.emitter.fireEvent(HW2Events.CHARGE_CHANGE, {curchrg: this.currentCharge, maxchrg: this.maxCharge});
+			}
 		}
 
 		// Move the player
@@ -140,19 +164,39 @@ export default class PlayerController implements AI {
 
 		// If the player is out of air - start subtracting from the player's health
 		this.currentHealth = this.currentAir <= this.minAir ? MathUtils.clamp(this.currentHealth - deltaT*2, this.minHealth, this.maxHealth) : this.currentHealth;
+
+		if (this.currentAir <= this.minAir) {
+			this.emitter.fireEvent(HW2Events.DROWNING)
+		}
 	}
 	/**
 	 * This method handles all events that the reciever for the PlayerController is
 	 * subscribed to.
-	 * 
+	 *
 	 * @see {AI.handleEvent}
-	 * 
+	 *
 	 * @param event a GameEvent that the PlayerController is subscribed to
 	 */
 	public handleEvent(event: GameEvent): void {
 		switch(event.type) {
 			case HW2Events.SHOOT_LASER: {
 				this.handleShootLaserEvent(event);
+				break;
+			}
+			case HW2Events.DROWNING: {
+				this.handleDrowning(event);
+				break;
+			}
+			case HW2Events.PLAYER_MINE_COLLISION: {
+				this.handlePlayerMineCollision(event);
+				break;
+			}
+			case HW2Events.DEAD: {
+				this.handleDeath(event);
+				break;
+			}
+			case HW2Events.PLAYER_BUBBLE_COLLISION: {
+				this.handlePlayerBubbleCollision(event);
 				break;
 			}
 			default: {
@@ -169,19 +213,19 @@ export default class PlayerController implements AI {
 
 	/**
 	 * This function handles when the player successfully shoots a laser.
-	 * @param event 
+	 * @param event
 	 */
 	protected handleShootLaserEvent(event: GameEvent): void {
 		this.laserTimer.reset();
 		this.laserTimer.start();
 	}
 
-	/** 
+	/**
 	 * A callback function that increments the number of charges the player's laser cannon has.
-	 * 
-	 * @remarks 
-	 * 
-	 * This function 
+	 *
+	 * @remarks
+	 *
+	 * This function
 	 * updates the total number of charges the player's laser cannon has
 	 */
 	protected handleLaserTimerEnd = () => {
@@ -192,7 +236,39 @@ export default class PlayerController implements AI {
 		}
 	}
 
-} 
+	protected handleDrowning(event: GameEvent): void {
+		if(!this.deadTimerStarted) {
+			this.owner.animation.playIfNotAlready(PlayerAnimations.HIT);
+			this.owner.animation.queue(PlayerAnimations.IDLE)
+		}
+	}
 
+	protected handlePlayerMineCollision(event: GameEvent): void {
+		if (!this.iframe) {
+			this.owner.animation.playIfNotAlready(PlayerAnimations.HIT)
+			this.owner.animation.queue(PlayerAnimations.IDLE)
+			this.currentHealth -= 1;
+			this.iframe = true;
+			if (this.currentHealth > 0) {
+				this.iframeTimer.start();
+			}
+		}
+	}
 
+	protected handleDeath(event: GameEvent): void {
+		if (!this.owner.animation.isPlaying(PlayerAnimations.DEATH)) {
+			this.owner.animation.stop()
+		}
+		this.owner.animation.playIfNotAlready(PlayerAnimations.DEATH);
+	}
 
+	protected iframeOFF = () => {
+		this.iframe = false;
+	}
+
+	protected handlePlayerBubbleCollision(event: GameEvent): void {
+		if (!this.deadTimerStarted) {
+			this.currentAir = MathUtils.clamp(this.currentAir + 1, this.minAir, this.maxAir);
+		}
+	}
+}
